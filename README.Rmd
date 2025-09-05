@@ -1,0 +1,255 @@
+Here’s the `.Rmd` file version of your backend README, formatted cleanly for knitting into GitHub-flavored Markdown:
+
+```markdown
+backend/README.Rmd
+---
+title: "Backend README — Personality-First Dating App"
+output:
+  github_document:
+    toc: true
+    toc_depth: 3
+---
+
+<!--
+This README is written in R Markdown so you can knit to GitHub-flavored Markdown.
+It documents a Node.js + Express + PostgreSQL + Socket.IO backend.
+-->
+
+# Overview
+
+This backend powers a personality/interest-based dating app featuring:
+
+- JWT authentication (signup/login)
+- User profiles (bio, interests, personality traits, photos)
+- Match suggestions (shared interests → compatibility score)
+- Likes / actions
+- Chat (REST persistence) + real-time messaging (Socket.IO)
+- Consent-based **photo reveal** (both users must opt in)
+
+# Tech Stack
+
+- **Runtime:** Node.js (Express)
+- **Database:** PostgreSQL
+- **Auth:** JWT (HMAC)
+- **Realtime:** Socket.IO
+- **Misc:** CORS, dotenv, bcrypt
+
+# Project Structure
+
+```
+
+dating-app-backend/
+│── server.js          # Express + Socket.IO entry
+│── db.js              # Postgres connection
+│── routes/
+│   ├── auth.js        # /auth (signup/login)
+│   ├── users.js       # /users (profiles)
+│   ├── matches.js     # /matches (suggestions, like/pass)
+│   └── chats.js       # /chats (messages, photo reveal)
+│── middleware/
+│   └── auth.js        # JWT verification
+│── package.json
+│── .env.example
+└── README.Rmd
+
+```
+
+# Prerequisites
+
+- Node.js 18+ and npm
+- PostgreSQL 13+ (local or managed)
+- (Optional) Docker if you prefer containerized Postgres
+
+# Environment
+
+Create a `.env` in the project root (copy from `.env.example`):
+
+```
+
+# App
+
+PORT=5000
+NODE\_ENV=development
+
+# JWT
+
+JWT\_SECRET=replace\_with\_a\_long\_random\_string
+
+# Postgres
+
+DATABASE\_URL=postgres\://postgres\:postgres\@localhost:5432/dating\_app
+
+````
+
+> **Never commit** your real `.env` to version control.
+
+# Install
+
+```bash
+git clone <your-backend-repo-url>
+cd dating-app-backend
+npm install
+````
+
+## Database Setup
+
+### Option A: Local PostgreSQL
+
+```sql
+-- Database
+CREATE DATABASE dating_app;
+
+-- Users
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100),
+  email VARCHAR(100) UNIQUE,
+  password TEXT,
+  age INT,
+  bio TEXT,
+  interests TEXT[],
+  personality JSONB,
+  photos TEXT[]
+);
+
+-- Likes
+CREATE TABLE IF NOT EXISTS likes (
+  id SERIAL PRIMARY KEY,
+  user_id INT REFERENCES users(id),
+  target_id INT REFERENCES users(id),
+  UNIQUE(user_id, target_id)
+);
+
+-- Messages
+CREATE TABLE IF NOT EXISTS messages (
+  id SERIAL PRIMARY KEY,
+  chat_id INT,
+  sender_id INT REFERENCES users(id),
+  content TEXT,
+  created_at TIMESTAMP DEFAULT now()
+);
+
+-- Photo reveal consents
+CREATE TABLE IF NOT EXISTS photo_reveals (
+  id SERIAL PRIMARY KEY,
+  match_id INT,
+  user_id INT REFERENCES users(id),
+  consent BOOLEAN DEFAULT false,
+  revealed_at TIMESTAMP DEFAULT now(),
+  UNIQUE(match_id, user_id)
+);
+```
+
+Optionally seed demo users (passwords must be bcrypt-hashed):
+
+```sql
+INSERT INTO users (name,email,password,age,bio,interests,personality,photos)
+VALUES
+('Alex','alex@example.com','<bcrypt_hash>',28,'Love hiking and jazz',
+ ARRAY['hiking','jazz','sushi'],
+ '{"openness":0.8,"conscientiousness":0.6,"extraversion":0.4,"agreeableness":0.7,"neuroticism":0.2}',
+ ARRAY['https://cdn.app.com/photos/blurred1.jpg']);
+```
+
+### Option B: Dockerized Postgres
+
+```bash
+docker run --name dating-app-pg \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=dating_app \
+  -p 5432:5432 -d postgres:15
+```
+
+Then run the schema SQL above.
+
+# Run (Development)
+
+```bash
+npm start
+# or (if using nodemon):
+# npx nodemon server.js
+```
+
+* REST API: `http://localhost:5000`
+* Socket.IO: same origin (`ws://localhost:5000`)
+
+# Core Endpoints
+
+### Auth
+
+* `POST /auth/signup` → `{ token, user_id }`
+* `POST /auth/login` → `{ token, user_id }`
+
+### Users
+
+* `GET /users/:id` (auth)
+* `PUT /users/:id` (auth) — update bio, interests\[], personality{}, photos\[]
+
+### Matches
+
+* `GET /matches/suggestions` (auth)
+* `POST /matches/:userId/action` (auth) body: `{ "action": "like" | "pass" }`
+
+### Chats
+
+* `GET /chats/:chatId/messages` (auth)
+* `POST /chats/:chatId/messages` (auth) body: `{ "content": "..." }`
+
+### Photo Reveal
+
+* `POST /matches/:matchId/photo-reveal` (auth) `{ "consent": true }`
+* `GET /matches/:matchId/photo-reveal` (auth)
+
+> Include `Authorization: Bearer <JWT>` in protected requests.
+
+# Socket.IO Events
+
+### Client emits
+
+* `join` → `{ userId }`
+* `send_message` → `{ chatId, senderId, recipientId, content }`
+
+### Server emits
+
+* `receive_message` → `{ chatId, senderId, content, timestamp }`
+
+# Quick Smoke Tests (cURL)
+
+```bash
+# Signup
+curl -X POST http://localhost:5000/auth/signup \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Test","email":"test@x.com","password":"secret","age":27}'
+
+# Login
+curl -X POST http://localhost:5000/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"test@x.com","password":"secret"}'
+# -> save TOKEN
+
+# Suggestions
+curl http://localhost:5000/matches/suggestions \
+  -H "Authorization: Bearer TOKEN"
+```
+
+# Common Pitfalls
+
+* **Android emulator & localhost:** Use `10.0.2.2:5000` from emulator.
+* **CORS in dev:** Set `origin: "*"` for dev, tighten in prod.
+* **JWT missing:** Ensure `Authorization: Bearer <token>` header is attached.
+* **Persisting chats:** Keep REST persistence even with sockets.
+* **Schema evolution:** Add `chats` and `matches` tables in production.
+
+# Production Notes
+
+* Managed Postgres (RDS/Cloud SQL), TLS via Nginx reverse proxy.
+* Token TTLs, rotation, rate limiting, input validation (Joi/Zod).
+* Object storage (S3/GCS) for photos; signed URLs; moderation pipelines.
+* Observability: logs, metrics, error tracking (Winston, pino, OpenTelemetry, Sentry).
+
+```
+
+---
+
+Do you also want me to prepare the **frontend/README.Rmd** in the same format so that both match neatly?
+```
