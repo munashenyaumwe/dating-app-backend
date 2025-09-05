@@ -149,7 +149,7 @@ router.get("/mutual", auth, async (req, res) => {
   }
 });
 
-/** GET /most-compatible - High compatibility matches (80%+) */
+/** GET /most-compatible - High compatibility matches (60%+) */
 router.get("/most-compatible", auth, async (req, res) => {
   const userId = Number(req.userId);
   const limit = Math.max(1, Math.min(Number(req.query.limit) || 20, 50));
@@ -195,7 +195,7 @@ router.get("/most-compatible", auth, async (req, res) => {
       [userId, myInterests, limit]
     );
 
-    // Calculate compatibility and filter for high compatibility (>=80%)
+    // Calculate compatibility and filter for high compatibility (>=60%)
     const compatibleUsers = rows
       .map(u => ({
         user_id: u.id,
@@ -209,7 +209,7 @@ router.get("/most-compatible", auth, async (req, res) => {
         shared_interests: u.shared_interests || [],
         compatibility_score: compat(myInterests, myPers, u.interests || [], u.personality || {}) / 100
       }))
-      .filter(u => u.compatibility_score >= 0.80);
+      .filter(u => u.compatibility_score >= 0.60);
 
     res.json(compatibleUsers);
   } catch (e) {

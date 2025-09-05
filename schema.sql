@@ -187,14 +187,20 @@ CREATE INDEX IF NOT EXISTS chats_match_idx ON chats (match_id);
 -- MESSAGES
 --  - Enforce sender belongs to match (trigger)
 --  - Keep created_at as timestamptz
+--  - Add read_at for message read status
 -- =========================================
 CREATE TABLE IF NOT EXISTS messages (
   id         SERIAL PRIMARY KEY,
   chat_id    INT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
   sender_id  INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   content    TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now()
+  created_at TIMESTAMPTZ DEFAULT now(),
+  read_at    TIMESTAMPTZ NULL
 );
+
+-- Add read_at column if it doesn't exist (for existing databases)
+ALTER TABLE messages 
+ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ NULL;
 
 -- Existing helpful index
 CREATE INDEX IF NOT EXISTS idx_messages_chat_id_created ON messages (chat_id, created_at);

@@ -6,8 +6,20 @@ const router = express.Router();
 
 // Get messages
 router.get("/:chatId/messages", auth, async (req, res) => {
-  const result = await pool.query("SELECT * FROM messages WHERE chat_id=$1 ORDER BY created_at ASC", [req.params.chatId]);
-  res.json(result.rows);
+  try {
+    const result = await pool.query("SELECT * FROM messages WHERE chat_id=$1 ORDER BY created_at ASC", [req.params.chatId]);
+    
+    // Mark messages as read for the current user (except their own messages)
+    await pool.query(
+      "UPDATE messages SET read_at = now() WHERE chat_id = $1 AND sender_id != $2 AND read_at IS NULL",
+      [req.params.chatId, req.userId]
+    );
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Error fetching messages:", error);
+    res.status(500).json({ error: "Failed to fetch messages" });
+  }
 });
 
 /** GET / - Get all user's active chats with last message info */
@@ -80,30 +92,44 @@ router.get("/", auth, async (req, res) => {
 
 // Send message
 router.post("/:chatId/messages", auth, async (req, res) => {
-  const { content } = req.body;
-  await pool.query(
-    "INSERT INTO messages (chat_id, sender_id, content) VALUES ($1,$2,$3)",
-    [req.params.chatId, req.user.id, content]
-  );
-  res.json({ message: "Sent" });
+  try {
+    const { content } = req.body;
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: "Message content is required" });
+    }
+    
+    await pool.query(
+      "INSERT INTO messages (chat_id, sender_id, content) VALUES ($1,$2,$3)",
+      [req.params.chatId, req.userId, content.trim()]
+    );
+    res.json({ message: "Sent" });
+  } catch (error) {
+    console.error("Error sending message:", error);
+    res.status(500).json({ error: "Failed to send message" });
+  }
 });
 
 // Request photo reveal
 router.post("/:matchId/photo-reveal", auth, async (req, res) => {
-  await pool.query(
-    "INSERT INTO photo_reveals (match_id, user_id, consent) VALUES ($1,$2,true) ON CONFLICT (match_id, user_id) DO UPDATE SET consent=true",
-    [req.params.matchId, req.user.id]
-  );
+  try {
+    await pool.query(
+      "INSERT INTO photo_reveals (match_id, user_id, consent) VALUES ($1,$2,true) ON CONFLICT (match_id, user_id) DO UPDATE SET consent=true",
+      [req.params.matchId, req.userId]
+    );
 
-  const reveal = await pool.query(
-    "SELECT COUNT(*) FROM photo_reveals WHERE match_id=$1 AND consent=true",
-    [req.params.matchId]
-  );
+    const reveal = await pool.query(
+      "SELECT COUNT(*) FROM photo_reveals WHERE match_id=$1 AND consent=true",
+      [req.params.matchId]
+    );
 
-  if (parseInt(reveal.rows[0].count) === 2) {
-    res.json({ status: "photos_revealed" });
-  } else {
-    res.json({ status: "waiting_for_other_user" });
+    if (parseInt(reveal.rows[0].count) === 2) {
+      res.json({ status: "photos_revealed" });
+    } else {
+      res.json({ status: "waiting_for_other_user" });
+    }
+  } catch (error) {
+    console.error("Error handling photo reveal:", error);
+    res.status(500).json({ error: "Failed to handle photo reveal" });
   }
 });
 
